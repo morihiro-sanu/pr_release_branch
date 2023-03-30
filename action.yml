@@ -1,0 +1,49 @@
+name: Pull request from release branch to master
+description: "Pull request from release branch to master"
+inputs:
+  token: # id of input
+    description: 'Personal access token (PAT) used to fetch the repository'
+    required: true
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract branch name
+      shell: bash
+      run: echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+      id: extract_branch
+    - name: Create copy branch
+      uses: peterjgrainger/action-create-branch@v2.4.0
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      with:
+        branch: 'robot/${{ steps.extract_branch.outputs.branch }}'
+    - name: Check out repository code
+      uses: actions/checkout@v3
+      with:
+        token: ${{ inputs.token }}
+        fetch-depth: 0
+        ref: "refs/heads/robot/${{ steps.extract_branch.outputs.branch }}"
+    - name: pull-request
+      uses: repo-sync/pull-request@v2
+      with:
+        source_branch: "refs/heads/robot/${{ steps.extract_branch.outputs.branch }}"
+        destination_branch: "master"
+        github_token: ${{ inputs.token }}
+        pr_label: "release,automated pr,automerge"
+        pr_title: "[AUTO] Merge release ${{ steps.extract_branch.outputs.branch }} to master"
+    - name: perform rebase
+      shell: bash
+      run: |
+        git config --global user.email "${GITHUB_ACTOR}"
+        git config --global user.name "${GITHUB_ACTOR}@users.noreply.github.com"
+        git status
+        git pull
+        git checkout "${{ steps.extract_branch.outputs.branch }}"
+        git status
+        git checkout "robot/${{ steps.extract_branch.outputs.branch }}"
+        git switch "robot/${{ steps.extract_branch.outputs.branch }}"
+        git rebase "${{ steps.extract_branch.outputs.branch }}"
+        git push
+        git status
